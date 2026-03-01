@@ -27,6 +27,15 @@ const List<int> kItems = [
 
 const int kGoal = 10000;
 
+// Pre-compute total count per denomination
+final Map<int, int> kTotalCounts = () {
+  final map = <int, int>{};
+  for (final v in kItems) {
+    map[v] = (map[v] ?? 0) + 1;
+  }
+  return map;
+}();
+
 // ─── Colors per denomination ──────────────────────────────────────────────────
 
 class DenomStyle {
@@ -74,20 +83,45 @@ const Map<int, DenomStyle> kDenomStyles = {
 };
 
 const List<LegendEntry> kLegend = [
-  LegendEntry(denom: 1,   label: '₱1 × 100',  color: Color(0xFFF9A825)),
-  LegendEntry(denom: 5,   label: '₱5 × 80',   color: Color(0xFF1E88E5)),
-  LegendEntry(denom: 10,  label: '₱10 × 50',  color: Color(0xFF43A047)),
-  LegendEntry(denom: 20,  label: '₱20 × 10',  color: Color(0xFFE91E63)),
-  LegendEntry(denom: 50,  label: '₱50 × 26',  color: Color(0xFF7E57C2)),
-  LegendEntry(denom: 100, label: '₱100 × 60', color: Color(0xFF00ACC1)),
-  LegendEntry(denom: 500, label: '₱500 × 3',  color: Color(0xFFFF6F00)),
+  LegendEntry(denom: 1,   color: Color(0xFFF9A825)),
+  LegendEntry(denom: 5,   color: Color(0xFF1E88E5)),
+  LegendEntry(denom: 10,  color: Color(0xFF43A047)),
+  LegendEntry(denom: 20,  color: Color(0xFFE91E63)),
+  LegendEntry(denom: 50,  color: Color(0xFF7E57C2)),
+  LegendEntry(denom: 100, color: Color(0xFF00ACC1)),
+  LegendEntry(denom: 500, color: Color(0xFFFF6F00)),
 ];
 
 class LegendEntry {
   final int denom;
-  final String label;
   final Color color;
-  const LegendEntry({required this.denom, required this.label, required this.color});
+  const LegendEntry({required this.denom, required this.color});
+}
+
+// ─── Log entry ────────────────────────────────────────────────────────────────
+
+class LogEntry {
+  final int amount;
+  final DateTime time;
+  final bool isAdd; // true = put in, false = removed
+
+  LogEntry({required this.amount, required this.time, required this.isAdd});
+
+  String serialize() =>
+      '${isAdd ? 1 : 0}|$amount|${time.millisecondsSinceEpoch}';
+
+  static LogEntry? deserialize(String s) {
+    final parts = s.split('|');
+    if (parts.length != 3) return null;
+    final ms = int.tryParse(parts[2]);
+    final amt = int.tryParse(parts[1]);
+    if (ms == null || amt == null) return null;
+    return LogEntry(
+      isAdd: parts[0] == '1',
+      amount: amt,
+      time: DateTime.fromMillisecondsSinceEpoch(ms),
+    );
+  }
 }
 
 // ─── App root ─────────────────────────────────────────────────────────────────
@@ -105,144 +139,12 @@ class IponChallengeApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF6B6B)),
         textTheme: GoogleFonts.nunitoTextTheme(),
       ),
-      home: const SplashPage(),
+      home: const IponHomePage(),
     );
   }
 }
 
-// ─── Splash / Landing page ────────────────────────────────────────────────────
-
-class SplashPage extends StatefulWidget {
-  const SplashPage({super.key});
-
-  @override
-  State<SplashPage> createState() => _SplashPageState();
-}
-
-class _SplashPageState extends State<SplashPage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ac;
-  late Animation<double> _fadeIn;
-  late Animation<double> _slideUp;
-
-  @override
-  void initState() {
-    super.initState();
-    _ac = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
-    _fadeIn = CurvedAnimation(parent: _ac, curve: Curves.easeIn);
-    _slideUp = Tween<double>(begin: 40, end: 0).animate(
-        CurvedAnimation(parent: _ac, curve: Curves.easeOut));
-    _ac.forward();
-  }
-
-  @override
-  void dispose() {
-    _ac.dispose();
-    super.dispose();
-  }
-
-  void _start() {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 500),
-        pageBuilder: (context2, anim1, anim2) => const IponHomePage(),
-        transitionsBuilder: (context2, anim, secAnim, child) =>
-            FadeTransition(opacity: anim, child: child),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFB6C1), // baby pink
-      body: SafeArea(
-        child: Center(
-          child: AnimatedBuilder(
-            animation: _ac,
-            builder: (context, child) => Opacity(
-              opacity: _fadeIn.value,
-              child: Transform.translate(
-                offset: Offset(0, _slideUp.value),
-                child: child,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Piggy image
-                  Image.asset(
-                    'assets/images/piggy.png',
-                    width: 220,
-                    height: 220,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Title
-                  Text(
-                    'Save!',
-                    style: GoogleFonts.baloo2(
-                      fontSize: 56,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          color: Colors.pink.shade300,
-                          offset: const Offset(2, 3),
-                          blurRadius: 6,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Subtitle
-                  Text(
-                    'Your ₱10,000 piggy bank challenge',
-                    style: GoogleFonts.nunito(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.88),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 48),
-
-                  // Start button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFFFF6B6B),
-                        elevation: 6,
-                        shadowColor: Colors.pink.shade200,
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: _start,
-                      child: Text(
-                        'Let\'s Start! 🐷',
-                        style: GoogleFonts.baloo2(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// ─── Home page ────────────────────────────────────────────────────────────────
 
 class IponHomePage extends StatefulWidget {
   const IponHomePage({super.key});
@@ -255,6 +157,7 @@ class _IponHomePageState extends State<IponHomePage> {
   late List<bool> _shaded;
   bool _loaded = false;
   bool _winShown = false;
+  List<LogEntry> _log = [];
 
   late ConfettiController _confettiController;
 
@@ -277,6 +180,8 @@ class _IponHomePageState extends State<IponHomePage> {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Load shaded state
     final saved = prefs.getString('ipon_shaded');
     if (saved != null && saved.isNotEmpty) {
       final indices = saved
@@ -287,6 +192,18 @@ class _IponHomePageState extends State<IponHomePage> {
         if (i < _shaded.length) _shaded[i] = true;
       }
     }
+
+    // Load log (never cleared by reset)
+    final logRaw = prefs.getString('ipon_log') ?? '';
+    if (logRaw.isNotEmpty) {
+      _log = logRaw
+          .split('\n')
+          .where((s) => s.isNotEmpty)
+          .map(LogEntry.deserialize)
+          .whereType<LogEntry>()
+          .toList();
+    }
+
     setState(() => _loaded = true);
     _checkWin(silent: true);
   }
@@ -298,6 +215,12 @@ class _IponHomePageState extends State<IponHomePage> {
       if (_shaded[i]) indices.add(i);
     }
     await prefs.setString('ipon_shaded', indices.join(','));
+  }
+
+  Future<void> _saveLog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = _log.map((e) => e.serialize()).join('\n');
+    await prefs.setString('ipon_log', raw);
   }
 
   // ── Stats ────────────────────────────────────────────────────────────────────
@@ -315,10 +238,17 @@ class _IponHomePageState extends State<IponHomePage> {
   // ── Toggle ───────────────────────────────────────────────────────────────────
 
   void _toggle(int index) {
+    final wasShaded = _shaded[index];
     setState(() {
       _shaded[index] = !_shaded[index];
     });
+    _log.add(LogEntry(
+      amount: kItems[index],
+      time: DateTime.now(),
+      isAdd: !wasShaded,
+    ));
     _saveState();
+    _saveLog();
     _checkWin();
   }
 
@@ -389,7 +319,7 @@ class _IponHomePageState extends State<IponHomePage> {
         title: Text('Reset Progress?',
             style: GoogleFonts.baloo2(fontWeight: FontWeight.w700)),
         content: Text(
-          'This will clear all your shaded boxes. This cannot be undone.',
+          'This will clear all your shaded boxes. Your Log Book will be kept.',
           style: GoogleFonts.nunito(color: Colors.grey[600]),
         ),
         actions: [
@@ -489,6 +419,38 @@ class _IponHomePageState extends State<IponHomePage> {
                 Color(0xFF4D96FF), Color(0xFFFF922B), Color(0xFFCC5DE8),
                 Color(0xFF20C997),
               ],
+            ),
+          ),
+
+          // ── Log Book button (top-right) ───────────────────────────────────────
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 12, right: 16),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  elevation: 4,
+                  shadowColor: Colors.black26,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => LogBookPage(log: _log),
+                      ),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        color: Color(0xFFFF6B6B),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
 
@@ -617,7 +579,7 @@ class _IponHomePageState extends State<IponHomePage> {
   // ── Legend ───────────────────────────────────────────────────────────────────
 
   Widget _buildLegend() {
-    // Compute how many of each denomination have been checked
+    // Compute how many of each denomination have already been checked
     final Map<int, int> checkedCounts = {};
     for (int i = 0; i < kItems.length; i++) {
       if (_shaded[i]) {
@@ -630,7 +592,9 @@ class _IponHomePageState extends State<IponHomePage> {
       spacing: 8,
       runSpacing: 8,
       children: kLegend.map((e) {
-        final count = checkedCounts[e.denom] ?? 0;
+        final checked = checkedCounts[e.denom] ?? 0;
+        final total = kTotalCounts[e.denom] ?? 0;
+        final remaining = total - checked;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
@@ -651,15 +615,17 @@ class _IponHomePageState extends State<IponHomePage> {
                 width: 14,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: e.color,
+                  color: remaining == 0 ? Colors.grey[300] : e.color,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
               const SizedBox(width: 6),
               Text(
-                '₱${e.denom} × $count',
+                '$remaining × ₱${e.denom}/$total',
                 style: GoogleFonts.nunito(
-                    fontSize: 12, fontWeight: FontWeight.w700),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: remaining == 0 ? Colors.grey[400] : null),
               ),
             ],
           ),
@@ -708,6 +674,161 @@ class _IponHomePageState extends State<IponHomePage> {
           );
         },
       ),
+    );
+  }
+}
+
+// ─── Log Book page ────────────────────────────────────────────────────────────────
+
+class LogBookPage extends StatelessWidget {
+  final List<LogEntry> log;
+
+  const LogBookPage({super.key, required this.log});
+
+  String _formatDate(DateTime dt) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const weekdays = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday',
+    ];
+    final month = months[dt.month - 1];
+    final day = dt.day.toString().padLeft(2, '0');
+    final year = dt.year;
+    final weekday = weekdays[dt.weekday - 1];
+    int hour = dt.hour;
+    final ampm = hour >= 12 ? 'PM' : 'AM';
+    if (hour > 12) hour -= 12;
+    if (hour == 0) hour = 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '$month $day, $year  •  $weekday  •  $hour:$minute $ampm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...log]..sort((a, b) => b.time.compareTo(a.time));
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF8F0),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 1,
+        shadowColor: Colors.black12,
+        title: Text(
+          '📒 Log Book',
+          style: GoogleFonts.baloo2(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: const Color(0xFF333333),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFFFF6B6B)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Colors.grey[200]),
+        ),
+      ),
+      body: sorted.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('📭', style: TextStyle(fontSize: 48)),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No transactions yet.',
+                    style: GoogleFonts.nunito(
+                        fontSize: 16, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              itemCount: sorted.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final entry = sorted[index];
+                final isAdd = entry.isAdd;
+                final denomStyle = kDenomStyles[entry.amount];
+                final accentColor = isAdd
+                    ? (denomStyle?.shadedBg ?? const Color(0xFFFF6B6B))
+                    : Colors.grey[500]!;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.07),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    leading: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          isAdd
+                              ? Icons.arrow_downward_rounded
+                              : Icons.arrow_upward_rounded,
+                          color: accentColor,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      isAdd
+                          ? 'You Put ₱${entry.amount}'
+                          : 'You Removed ₱${entry.amount}',
+                      style: GoogleFonts.baloo2(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF333333),
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _formatDate(entry.time),
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '₱${entry.amount}',
+                        style: GoogleFonts.baloo2(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: accentColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
